@@ -2,7 +2,6 @@
 
 import re, sys, gzip, json, tarfile
 from os.path import isfile
-from bs4 import BeautifulSoup
 import xmltodict
 
 """
@@ -27,8 +26,8 @@ extract metadata for bookshelf app
 
 smells like there is a memory leak or something not being freed (1.5GB at exit)
 nope, the structure takes up 1.3GB on a fresh load
-metadata appears to be missing the "LoC Class" field
 
+metadata appears to be missing the "LoC Class" field
 language field is sometimes wrong (dante's italian is all marked 'en')
 """
 
@@ -270,7 +269,7 @@ def json_metadata():
     everything = []
     for k,v in metadata(rdf):
         everything.append(v)
-    with gzip.open(output, 'w') as g:
+    with gzip.open(output, 'wt') as g:
         json.dump(everything, g, indent=2, sort_keys=True)
 
 def list_popular():
