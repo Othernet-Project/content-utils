@@ -53,13 +53,28 @@ def zips_to_process(args):
             if iszip(path):
                 yield path
 
-def find_html(z):
-    "takes a zipfile object, returns info objects"
+def is_data(name):
+    n = basename(name)
+    _,e = splitext(n)
+    return e in data_extensions
+
+def find_extension(z, extensions):
+    "returns matching info objects"
     for i in z.infolist():
         n = basename(i.filename)
         _,e = splitext(n)
-        if e not in html_extensions:
+        if e not in extensions:
             continue
+        yield i
+
+def find_html(z):
+    "takes a zipfile object, returns info objects"
+    for i in find_extension(z, html_extensions):
+        yield i
+
+def find_data(z):
+    "takes a zipfile object, returns info objects"
+    for i in find_extension(z, data_extensions):
         yield i
 
 def smart_join(path1, path2):
@@ -80,6 +95,7 @@ def files_to_skip(z, limit=1e6):
     "set of absolute zip names that exceed the limit size"
     size = dict((i.filename, i.file_size) for i in z.infolist())
     total = dict((i.filename, 0) for i in z.infolist())
+    skip = set()
     for i in find_html(z):
         name = i.filename
         html = z.open(i).read()
@@ -93,14 +109,20 @@ def files_to_skip(z, limit=1e6):
                 continue
             # figure out the absolute path
             img_path = smart_join(base_path, img['src'])
+            if img_path not in size:
+                print("    warning: missing %s" % img_path)
+                #skip.add(img_path)
+                continue
             total[img_path] += size[img_path]
-    skip = set()
     skip.update(n for n,s in size.items() if s > limit)
     skip.update(n for n,s in total.items() if s > limit)
     return skip
 
 def encode_file(z, abs_name):
-    b64 = base64.b64encode(z.open(abs_name).read())
+    try:
+        b64 = base64.b64encode(z.open(abs_name).read())
+    except KeyError:
+        return ''
     return b64.decode()
 
 def data_url(mime, b64):
@@ -136,6 +158,9 @@ def process_html(z, i, to_skip):
         image_data_uri(img, b64)
     return str(soup), replaced
 
+def zip_rename(z1, z2, i1, i2):
+    z2.writestr(i2, z1.open(i1).read())
+
 def zip_copy(z1, z2, i):
     z2.writestr(i, z1.open(i).read())
 
@@ -147,11 +172,7 @@ def main(zips):
             continue
         print("Converting %s" % z2_name)
         z1 = zf(zipname, 'r')
-        try:
-            to_skip = files_to_skip(z1)
-        except KeyError:
-            print("    ERROR: MISSING FILES")
-            continue
+        to_skip = files_to_skip(z1)
         z2 = zf(z2_name, 'w')
         replaced = set()
         # insert data URIs
