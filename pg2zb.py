@@ -79,7 +79,7 @@ def cache_hit(url, page_cache):
     print('DOWNLOADING', url)
     if 'gutenberg.org' in url:
         if pg_skip:
-            print('    warning: %s is for another day' % n['id'])
+            print('    warning: postponing for another day')
             return
         print('    . . . .')
         time.sleep(pg_delay)
@@ -147,13 +147,15 @@ def build_info(url, **kwargs):
     info['url'] = url
     info['domain'] = url.partition('//')[2].split('/')[0]
     defaults = {'title': None,
-                'is_sponsored': False,
                 'images': 0,
                 'timestamp': None,
+                'broadcast': '$BROADCAST',
+                'is_sponsored': False,
+                'is_partner': True,
                 'archive': 'core',
                 'keep_formatting': False,
-                'parter': None,
-                'license': None,
+                'publisher': 'Project Gutenburg',
+                'license':  'PD',
                }
     for k,v in defaults.items():
         info[k] = v
@@ -197,6 +199,13 @@ def lazy_rename(n, uniq):
     "convert old zip paths to new zip paths"
     return uniq + '/' + n.partition('/')[2]
 
+def get_keywords(node):
+    subjects = []
+    for subject in node['subjects']:
+        subjects.extend(subject.split(' -- '))
+    subjects.extend(node['bookshelf'])
+    return ', '.join(subjects)
+
 def fancy_zipball(node, pgzip_path):
     "single html page in zip file, possibly with images"
     z1 = zipfile.ZipFile(pgzip_path, 'r')
@@ -232,7 +241,8 @@ def fancy_zipball(node, pgzip_path):
             img_tally += 1
         uri.zip_rename(z1, z2, i, lazy_rename(n, uniq))
     stamp = timestamp(pgzip_path)
-    info = build_info(node['base_url'], title=node['title'].strip(), timestamp=stamp, license=node['license'], images=img_tally)
+    info = build_info(node['base_url'], title=node['title'].strip(),
+                      keyword=get_keywords(node), timestamp=stamp)
     z2.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     z2.close()
     z1.close()
@@ -353,5 +363,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
