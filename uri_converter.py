@@ -133,6 +133,8 @@ def mime_table(tag, ext):
     table = {('img', 'png'): 'image/png',
              ('img', 'jpg'): 'image/jpg',
              ('img', 'gif'): 'image/gif',}
+    if (tag, ext) not in table:
+        return 'application/octet-stream'
     return table[(tag, ext)]
 
 def image_data_uri(img_soup, b64):
