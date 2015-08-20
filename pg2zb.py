@@ -52,6 +52,7 @@ size at html: 47659
 93% of the collection
 
 runtime around 30 minutes per 1000
+comment out 'broadcast' if loading directly
 """
 
 def init():
@@ -254,6 +255,7 @@ def simple_zipball(node, html_path):
     z.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     z.writestr(os.path.join(uniq, 'index.html'), open(html_path).read())
     z.close()
+    print('    ' + uniq + '.zip')
 
 def find_htmls(z):
     return list(uri.find_html(z))
@@ -270,27 +272,46 @@ def get_keywords(node):
     return ', '.join(subjects)
 
 def fancy_zipball(node, pgzip_path):
-    "single html page in zip file, possibly with images"
+    "single or multiple html page in zip file, possibly with images"
     uniq = node_md5(node)
     zip_path = os.path.join('zipballs', uniq + '.zip')
     if good_file(zip_path) and not update_conversions:
         return
     z1 = zipfile.ZipFile(pgzip_path, 'r')
     pages = list(find_htmls(z1))
-    assert len(pages) == 1
-    page = pages[0]
+    if len(pages) == 1:
+        page = pages[0]
+    else:
+        number = os.path.basename(node['id'])
+        page = [p for p in pages if number in os.path.basename(p.filename)]
+        assert len(page) == 1
+        page = page[0]
+    # 'page' is special and will be renamed to index.html
+    old_index = os.path.basename(page.filename)
     to_skip = uri.files_to_skip(z1)
-    try:
-        # data-uri the images
-        html2, replaced = uri.process_html(z1, page, to_skip)
-    except RuntimeError:
-        # some of the html sends Soup into an infinite recursion
-        print('    error: %s broke the soup' % node['id'])
-        return
+    replaced = set()
     z2 = zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED)
-    # add all the files
-    z2.writestr(os.path.join(uniq, 'index.html'), html2)
-    replaced.add(page)
+    for i in uri.find_html(z1):
+        try:
+            # data-uri the images
+            html2, r2 = uri.process_html(z1, i, to_skip)
+        except RuntimeError:
+            # some of the html sends Soup into an infinite recursion
+            print('    error: %s broke the soup' % node['id'])
+            z2.close()
+            z1.close()
+            os.remove(zip_path)
+            return
+        replaced |= r2
+        # add all the files
+        new_name = lazy_rename(i.filename, uniq)
+        if i == page:
+            new_name = os.path.join(uniq, 'index.html')
+        if i != page and old_index in html2:
+            # never seems to happen?
+            print('    error: %s has broken link to %s' % (node['id'], old_index))
+        z2.writestr(new_name, html2)
+        replaced.add(i.filename)
     img_tally = 0
     # probably should flatten directory structure
     for i in z1.infolist():
@@ -311,13 +332,13 @@ def fancy_zipball(node, pgzip_path):
     z2.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     z2.close()
     z1.close()
+    print('    ' + uniq + '.zip')
 
 def multipage_zipball(node, pgzip_path):
     "multiple html pages in zip file, possibly with images"
-    # at some point this will replace the older fancy_zipball() use case too
     # only 6 out of the top 1000 use this
-    print('    warning: %s is multi-page document' % node['id'])
-    pass
+    print('    note: %s is multi-page document' % node['id'])
+    fancy_zipball(node, pgzip_path)
 
 """
 challenge one: figure out which file types are worth getting
@@ -367,7 +388,7 @@ def most_popular(number):
     return extract(top)
 
 def legit_filter(nodes, quiet=False):
-    "text-based, public domain and html availible"
+    "text-based, public domain and html/txt available"
     if not quiet:
         print('size at top:', len(nodes))
     nodes = list(n for n in nodes if n['media_type'] == 'Text')
@@ -379,11 +400,11 @@ def legit_filter(nodes, quiet=False):
     if not quiet:
         print('size at public:', len(nodes))
 
-    # easy mode: html only
-    html_fn = lambda formats: any(f.startswith('text/html') for f in formats)
+    good_format = lambda f: f.startswith('text/html') or f.startswith('text/plain')
+    html_fn = lambda formats: any(good_format(f) for f in formats)
     nodes = list(tag_filter(nodes, ['files', '*', 'format'], html_fn))
     if not quiet:
-        print('size at html:', len(nodes))
+        print('size at format:', len(nodes))
     return nodes
 
 def main():
@@ -447,7 +468,7 @@ def main():
             continue
         page_count = len(find_htmls(z1))
         z1.close()
-        assert page_count != 0
+        assert page_count > 0
         if page_count == 1:
             fancy_zipball(n, page_cache)
             continue

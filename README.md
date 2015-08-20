@@ -8,3 +8,4 @@ The average content page has 10 images, and each image is uniquely used once per
 
 (If you notice that the json data is 3% smaller when produced by python3, don't worry.  `json.dump` in python2 likes to put a space after commas and this is the entire difference.  There is no data lost.)
 
+`pg2zb.py` is for bulk conversion of Project Gutenberg to zipball format.  Some of this is done through the `uri_converter` script, when Project Gutenberg provides HTML.  [GutenMark](http://www.sandroid.org/GutenMark/) is used for text files.  See the [AUR package](https://aur.archlinux.org/packages/gutenmark/) for installing GutenMark.
