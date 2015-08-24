@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import os, sys, gzip, json, time, zipfile, hashlib, subprocess
+import os, re, sys, gzip, json, time, zipfile, hashlib, subprocess
 import urllib.request
 from os.path import isfile
 from itertools import *
@@ -17,6 +17,19 @@ pg_delay = 60
 pg_skip = False
 mirror = 'http://www.gutenberg.lib.md.us'
 pg = []
+
+LOCALES = [
+    'gv', 'gu', 'gd', 'ga', 'gl', 'lg', 'ln', 'lo', 'tr', 'ts', 'tn', 'to',
+    'lt', 'lu', 'th', 'ti', 'tg', 'te', 'ta', 'yo', 'de', 'ko', 'da', 'dz',
+    'kn', 'el', 'eo', 'en', 'zh', 'ee', 'eu', 'zu', 'es', 'ru', 'rw', 'kl',
+    'rm', 'rn', 'ro', 'be', 'bg', 'uk', 'ps', 'bm', 'bn', 'bo', 'br', 'bs',
+    'ja', 'om', 'os', 'or', 'xh', 'ca', 'cy', 'cs', 'lv', 'pt', 'pa', 'is',
+    'pl', 'hy', 'hr', 'hu', 'hi', 'ha', 'he', 'mg', 'uz', 'ml', 'mn', 'mk',
+    'ur', 'mt', 'ms', 'mr', 'my', 'sq', 'aa', 've', 'af', 'vi', 'ak', 'am',
+    'it', 'vo', 'ii', 'as', 'ar', 'et', 'ia', 'az', 'id', 'ig', 'ks', 'nl',
+    'nn', 'nb', 'nd', 'ne', 'kw', 'nr', 'fr', 'fa', 'kk', 'ff', 'fi', 'fo',
+    'ka', 'ss', 'sr', 'ki', 'sw', 'sv', 'km', 'st', 'sk', 'si', 'so', 'sn',
+    'sl', 'ky', 'sg', 'se' ]
 
 """
 bugs: size limit may be determined from non-compressed size
@@ -243,6 +256,26 @@ def text_to_html(node, text_path, html_path):
     print('    running gutenmark on %s' % node['id'])
     call_status(cmd)
 
+def get_language(node):
+    # 0.3% of books have multiple languages
+    # this function always assumes a single language
+    lang = node['language'][0].lower().strip()
+    if lang in LOCALES:
+        return lang
+    print('    warning: %s contains an improper language key' % node['id'])
+    return ''
+
+def get_keywords(node):
+    import re
+    subjects = []
+    for subject in node['subjects']:
+        subjects.extend(subject.split(' -- '))
+    subjects.extend(node['bookshelf'])
+    subjects = [re.sub(r'[^\w\d]', ' ', x) for x in subjects]
+    subjects = [re.sub(r'\s+', ' ', x) for x in subjects]
+    subjects = [re.sub(r'\s\w\s', ' ', x) for x in subjects]
+    return ', '.join(subjects)
+
 def simple_zipball(node, html_path):
     "single html file, no images"
     uniq = node_md5(node)
@@ -251,7 +284,9 @@ def simple_zipball(node, html_path):
         return
     z = zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED)
     stamp = timestamp(html_path)
-    info = build_info(node['base_url'], title=node['title'].strip(), timestamp=stamp, license=node['license'])
+    info = build_info(node['base_url'], keywords=get_keywords(node),
+           language=get_language(node), title=node['title'].strip(),
+           timestamp=stamp, license=node['license'])
     z.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     z.writestr(os.path.join(uniq, 'index.html'), open(html_path).read())
     z.close()
@@ -263,13 +298,6 @@ def find_htmls(z):
 def lazy_rename(n, uniq):
     "convert old zip paths to new zip paths"
     return uniq + '/' + n.partition('/')[2]
-
-def get_keywords(node):
-    subjects = []
-    for subject in node['subjects']:
-        subjects.extend(subject.split(' -- '))
-    subjects.extend(node['bookshelf'])
-    return ', '.join(subjects)
 
 def fancy_zipball(node, pgzip_path):
     "single or multiple html page in zip file, possibly with images"
@@ -328,7 +356,8 @@ def fancy_zipball(node, pgzip_path):
         uri.zip_rename(z1, z2, i, lazy_rename(n, uniq))
     stamp = timestamp(pgzip_path)
     info = build_info(node['base_url'], title=node['title'].strip(),
-                      keyword=get_keywords(node), timestamp=stamp)
+           language=get_language(node), keywords=get_keywords(node),
+           timestamp=stamp)
     z2.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     z2.close()
     z1.close()
