@@ -9,6 +9,7 @@ import uri_converter as uri
 
 top_count = 1000
 pg_size_limit = 1e6
+debug = False
 perform_downloads = True
 perform_conversions = True  # of html to zipball
 update_conversions = False
@@ -437,6 +438,73 @@ def legit_filter(nodes, quiet=False):
         print('size at format:', len(nodes))
     return nodes
 
+def process_node(n):
+    print(n['id'])
+    promising = best_file2(n)
+    if not promising:
+        print('    warning: %s has no usable text' % n['id'])
+        return
+    scale = 1
+    if not any('application/zip' in a for a in promising['format']):
+        scale = text_compression
+    if (promising['size'] * scale) > pg_size_limit:
+        print('    warning: %s is too large' % n['id'])
+        return
+    url = promising['url']
+    if 'gutenberg.org/files/' in url:
+        url = node_to_mirror(n, promising)
+    page_cache = url_to_local(url)
+    cache_hit(url, page_cache)
+    if perform_downloads and not good_file(page_cache):
+        print('    warning: %s did not download' % n['id'])
+        return
+    if promising['size'] != os.path.getsize(page_cache):
+        print('    warning: %s is wrong size' % n['id'])
+    if not perform_conversions:
+        return
+    if any('text/plain' in a for a in promising['format']):
+        # simple single text file
+        if url.endswith('.txt'):
+            text_path = page_cache
+            html_path = page_cache.replace('.txt', '.html')
+        elif url.endswith('.zip'):
+            text_path = 'temp.txt'
+            extract_text(page_cache, text_path)
+            html_path = page_cache.replace('.zip', '.html')
+        else:
+            print('    error: %s is a weird text file' % n['id'])
+            return
+        assert html_path != page_cache
+        text_to_html(n, text_path, html_path)
+        try:
+            simple_zipball(n, html_path)
+        except UnicodeDecodeError:
+            simple_zipball(n, html_path, encoding=get_encoding(promising))
+        return
+    assert any('text/html' in a for a in promising['format'])
+    if not url.endswith('.zip'):
+        # simple single html file
+        try:
+            simple_zipball(n, page_cache)
+        except UnicodeDecodeError:
+            simple_zipball(n, page_cache, encoding=get_encoding(promising))
+        return
+    if not zipfile.is_zipfile(page_cache):
+        print('    error: %s not a zip file' % n['id'])
+        return
+    try:
+        z1 = zipfile.ZipFile(page_cache, 'r')
+    except zipfile.BadZipFile:
+        print('    error: %s not a zip file' % n['id'])
+        return
+    page_count = len(find_htmls(z1))
+    z1.close()
+    assert page_count > 0
+    if page_count == 1:
+        fancy_zipball(n, page_cache)
+        return
+    multipage_zipball(n, page_cache)
+
 def main():
     init()
     nodes = most_popular(top_count)
@@ -444,71 +512,16 @@ def main():
     nodes = legit_filter(nodes)
 
     for n in nodes:
-        print(n['id'])
-        promising = best_file2(n)
-        if not promising:
-            print('    warning: %s has no usable text' % n['id'])
-            continue
-        scale = 1
-        if not any('application/zip' in a for a in promising['format']):
-            scale = text_compression
-        if (promising['size'] * scale) > pg_size_limit:
-            print('    warning: %s is too large' % n['id'])
-            continue
-        url = promising['url']
-        if 'gutenberg.org/files/' in url:
-            url = node_to_mirror(n, promising)
-        page_cache = url_to_local(url)
-        cache_hit(url, page_cache)
-        if perform_downloads and not good_file(page_cache):
-            print('    warning: %s did not download' % n['id'])
-            continue
-        if promising['size'] != os.path.getsize(page_cache):
-            print('    warning: %s is wrong size' % n['id'])
-        if not perform_conversions:
-            continue
-        if any('text/plain' in a for a in promising['format']):
-            # simple single text file
-            if url.endswith('.txt'):
-                text_path = page_cache
-                html_path = page_cache.replace('.txt', '.html')
-            elif url.endswith('.zip'):
-                text_path = 'temp.txt'
-                extract_text(page_cache, text_path)
-                html_path = page_cache.replace('.zip', '.html')
-            else:
-                print('    error: %s is a weird text file' % n['id'])
-                continue
-            assert html_path != page_cache
-            text_to_html(n, text_path, html_path)
-            try:
-                simple_zipball(n, html_path)
-            except UnicodeDecodeError:
-                simple_zipball(n, html_path, encoding=get_encoding(promising))
-            continue
-        assert any('text/html' in a for a in promising['format'])
-        if not url.endswith('.zip'):
-            # simple single html file
-            try:
-                simple_zipball(n, page_cache)
-            except UnicodeDecodeError:
-                simple_zipball(n, page_cache, encoding=get_encoding(promising))
-            continue
-        if not zipfile.is_zipfile(page_cache):
-            print('    error: %s not a zip file' % n['id'])
+        if debug:
+            process_node(n)
             continue
         try:
-            z1 = zipfile.ZipFile(page_cache, 'r')
-        except zipfile.BadZipFile:
-            print('    error: %s not a zip file' % n['id'])
+            process_node(n)
+        except KeyboardInterrupt:
+            break
+        except:
+            print('    ERROR: %s unknown error' % n['id']) 
             continue
-        page_count = len(find_htmls(z1))
-        z1.close()
-        assert page_count > 0
-        if page_count == 1:
-            fancy_zipball(n, page_cache)
-            continue
-        multipage_zipball(n, page_cache)
 
 if __name__ == '__main__':
     main()
