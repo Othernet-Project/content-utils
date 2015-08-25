@@ -34,7 +34,7 @@ LOCALES = [
 """
 bugs: size limit may be determined from non-compressed size
 some html files are only available on g.org, and you will get a 24hr ban eventually
-suggested method of logging 'pg2zb.py > log.txt'
+suggested method of logging 'pg2zb.py | tee log.txt'
 
 
 98% of Text have html somewhere
@@ -100,7 +100,7 @@ def cache_hit(url, page_cache):
         return
     if not perform_downloads:
         return
-    print('DOWNLOADING', url)
+    print('    DOWNLOADING', url)
     if 'gutenberg.org' in url:
         if pg_skip:
             print('    warning: postponing for another day')
@@ -113,11 +113,6 @@ def cache_hit(url, page_cache):
 
 def pretty(thing):
     print(json.dumps(thing, indent=2, sort_keys=True))
-
-def extract(id_set):
-    "extract elements from pg.json, not very efficient for N=all"
-    # could be more clever, destroys the ordering
-    return [n for n in pg if n['id'] in id_set]
 
 def tag_filter(nodes, tag, test_fn):
     "tag can be a single string or a list, returns items that pass test_fn"
@@ -417,11 +412,10 @@ def most_popular(number):
     "top N items by download count"
     if number >= len(pg):
         return pg
-    rank = list((n['downloads'], n['id']) for n in pg)
+    rank = list((n['downloads'], n['id'], n) for n in pg)
     rank.sort()
     rank.reverse()
-    top = list(b for a,b in rank[:number])
-    return extract(top)
+    return list(n for _,_,n in rank[:number])
 
 def legit_filter(nodes, quiet=False):
     "text-based, public domain and html/txt available"
