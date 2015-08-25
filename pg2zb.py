@@ -236,7 +236,7 @@ def timestamp(path):
 def extract_text(page_cache, text_path):
     assert zipfile.is_zipfile(page_cache)
     z = zipfile.ZipFile(page_cache, 'r')
-    text = [f for f in z.namelist() if f.endswith('.txt')]
+    text = [f for f in z.namelist() if f.lower().endswith('.txt')]
     assert len(text) == 1
     temp = open(text_path, 'wb')
     temp.write(z.read(text[0]))
@@ -276,7 +276,7 @@ def get_keywords(node):
     subjects = [re.sub(r'\s\w\s', ' ', x) for x in subjects]
     return ', '.join(subjects)
 
-def simple_zipball(node, html_path):
+def simple_zipball(node, html_path, encoding=None):
     "single html file, no images"
     uniq = node_md5(node)
     zip_path = os.path.join('zipballs', uniq + '.zip')
@@ -288,7 +288,11 @@ def simple_zipball(node, html_path):
            language=get_language(node), title=node['title'].strip(),
            timestamp=stamp, license=node['license'])
     z.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
-    z.writestr(os.path.join(uniq, 'index.html'), open(html_path).read())
+    if encoding:
+        utf8_html = open(html_path).decode(encoding).encode('utf8').read()
+    else:
+        utf8_html = open(html_path).read()
+    z.writestr(os.path.join(uniq, 'index.html'), utf8_html)
     z.close()
     print('    ' + uniq + '.zip')
 
@@ -368,6 +372,9 @@ def multipage_zipball(node, pgzip_path):
     # only 6 out of the top 1000 use this
     print('    note: %s is multi-page document' % node['id'])
     fancy_zipball(node, pgzip_path)
+
+def get_encoding(file_node):
+    return re.search('^charset\= (*+)', file_node['format'][1])
 
 """
 challenge one: figure out which file types are worth getting
@@ -480,12 +487,18 @@ def main():
                 continue
             assert html_path != page_cache
             text_to_html(n, text_path, html_path)
-            simple_zipball(n, html_path)
+            try:
+                simple_zipball(n, html_path)
+            except UnicodeDecodeError:
+                simple_zipball(n, html_path, encoding=get_encoding(promising))
             continue
         assert any('text/html' in a for a in promising['format'])
         if not url.endswith('.zip'):
             # simple single html file
-            simple_zipball(n, page_cache)
+            try:
+                simple_zipball(n, page_cache)
+            except UnicodeDecodeError:
+                simple_zipball(n, page_cache, encoding=get_encoding(promising))
             continue
         if not zipfile.is_zipfile(page_cache):
             print('    error: %s not a zip file' % n['id'])
