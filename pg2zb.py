@@ -7,7 +7,7 @@ from itertools import *
 from bs4 import BeautifulSoup
 import uri_converter as uri
 
-top_count = 1000
+top_count = 1000000
 pg_size_limit = 1e6
 debug = False
 perform_downloads = True
@@ -282,7 +282,7 @@ def simple_zipball(node, html_path, encoding=None):
     stamp = timestamp(html_path)
     info = build_info(node['base_url'], keywords=get_keywords(node),
            language=get_language(node), title=node['title'].strip(),
-           timestamp=stamp, license=node['license'])
+           timestamp=stamp)
     z.writestr(os.path.join(uniq, 'info.json'), json.dumps(info))
     if encoding:
         utf8_html = open(html_path).decode(encoding).encode('utf8').read()
@@ -520,7 +520,7 @@ def main():
         except KeyboardInterrupt:
             break
         except:
-            print('    ERROR: %s unknown error' % n['id']) 
+            print('    ERROR: %s unknown error' % n['id'])
             continue
 
 if __name__ == '__main__':
